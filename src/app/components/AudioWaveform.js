@@ -1,7 +1,5 @@
 "use client";
 import { FileContext } from "@/context/fileContext";
-import axios from "axios";
-import { saveAs } from "file-saver";
 import { useContext, useEffect, useRef, useState } from "react";
 import wavesurfer from "wavesurfer.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugin/wavesurfer.regions.min.js";
@@ -10,18 +8,13 @@ const AudioWaveform = () => {
   const wavesurferRef = useRef(null);
   const timelineRef = useRef(null);
 
-  // fetch file url from the context
-  const { fileURL, setFileURL } = useContext(FileContext);
+  const { fileURL } = useContext(FileContext);
 
-  // crate an instance of the wavesurfer
   const [wavesurferObj, setWavesurferObj] = useState();
 
-  const [playing, setPlaying] = useState(true); // to keep track whether audio is currently playing or not
-  const [volume, setVolume] = useState(1); // to control volume level of the audio. 0-mute, 1-max
-  const [zoom, setZoom] = useState(1); // to control the zoom level of the waveform
-  const [duration, setDuration] = useState(0); // duration is used to set the default region of selection for trimming the audio
+  const [playing, setPlaying] = useState(true);
+  const [duration, setDuration] = useState(0);
 
-  // create the waveform inside the correct component
   useEffect(() => {
     if (wavesurferRef.current && !wavesurferObj) {
       setWavesurferObj(
@@ -45,7 +38,6 @@ const AudioWaveform = () => {
     }
   }, [wavesurferRef, wavesurferObj]);
 
-  // once the file URL is ready, load the file to produce the waveform
   useEffect(() => {
     if (fileURL && wavesurferObj) {
       wavesurferObj.load(fileURL);
@@ -54,24 +46,20 @@ const AudioWaveform = () => {
 
   useEffect(() => {
     if (wavesurferObj) {
-      // once the waveform is ready, play the audio
       wavesurferObj.on("ready", () => {
         wavesurferObj.play();
-        wavesurferObj.enableDragSelection({}); // to select the region to be trimmed
-        setDuration(Math.floor(wavesurferObj.getDuration())); // set the duration in local state
+        wavesurferObj.enableDragSelection({});
+        setDuration(Math.floor(wavesurferObj.getDuration()));
       });
 
-      // once audio starts playing, set the state variable to true
       wavesurferObj.on("play", () => {
         setPlaying(true);
       });
 
-      // once audio starts playing, set the state variable to false
       wavesurferObj.on("finish", () => {
         setPlaying(false);
       });
 
-      // if multiple regions are created, then remove all the previous regions so that only 1 is present at any given time
       wavesurferObj.on("region-updated", (region) => {
         const regions = region.wavesurfer.regions.list;
         const keys = Object.keys(regions);
@@ -82,51 +70,29 @@ const AudioWaveform = () => {
     }
   }, [wavesurferObj]);
 
-  // set volume of the wavesurfer object, whenever volume variable in state is changed
-  useEffect(() => {
-    if (wavesurferObj) wavesurferObj.setVolume(volume);
-  }, [volume, wavesurferObj]);
-
-  // set zoom level of the wavesurfer object, whenever the zoom variable in state is changed
-  useEffect(() => {
-    if (wavesurferObj) wavesurferObj.zoom(zoom);
-  }, [zoom, wavesurferObj]);
-
-  // when the duration of the audio is available, set the length of the region depending on it, so as to not exceed the total lenght of the audio
   useEffect(() => {
     if (duration && wavesurferObj) {
-      // add a region with default length
       wavesurferObj.addRegion({
-        start: Math.floor(duration / 2) - Math.floor(duration) / 5, // time in seconds
-        end: Math.floor(duration / 2), // time in seconds
-        color: "hsla(265, 100%, 86%, 0.4)", // color of the selected region, light hue of purple
+        start: Math.floor(duration / 2) - Math.floor(duration) / 5,
+        end: Math.floor(duration / 2),
+        color: "hsla(265, 100%, 86%, 0.4)",
       });
     }
   }, [duration, wavesurferObj]);
 
-  const handlePlayPause = (e) => {
+  const handlePlayPause = () => {
     wavesurferObj.playPause();
     setPlaying(!playing);
   };
 
-  const handleReload = (e) => {
-    // stop will return the audio to 0s, then play it again
+  const handleReload = () => {
     wavesurferObj.stop();
     wavesurferObj.play();
-    setPlaying(true); // to toggle the play/pause button icon
+    setPlaying(true);
   };
 
-  const handleVolumeSlider = (e) => {
-    setVolume(e.target.value);
-  };
-
-  const handleZoomSlider = (e) => {
-    setZoom(e.target.value);
-  };
-
-  const handleTrim = (e) => {
+  const handleTrim = () => {
     if (wavesurferObj) {
-      // get start and end points of the selected region
       const region =
         wavesurferObj.regions.list[Object.keys(wavesurferObj.regions.list)[0]];
 
@@ -134,52 +100,37 @@ const AudioWaveform = () => {
         const start = region.start;
         const end = region.end;
 
-        // obtain the original array of the audio
-        const original_buffer = wavesurferObj.backend.buffer;
+        const original_buffer = wavesurferObj?.backend.buffer;
 
-        // create a temporary new buffer array with the same length, sample rate and no of channels as the original audio
         const new_buffer = wavesurferObj.backend.ac.createBuffer(
           original_buffer.numberOfChannels,
           original_buffer.length,
           original_buffer.sampleRate
         );
 
-        // create 2 indices:
-        // left & right to the part to be trimmed
         const first_list_index = start * original_buffer.sampleRate;
         const second_list_index = end * original_buffer.sampleRate;
         const second_list_mem_alloc =
           original_buffer.length - end * original_buffer.sampleRate;
 
-        // create a new array upto the region to be trimmed
         const new_list = new Float32Array(parseInt(first_list_index));
 
-        // create a new array of region after the trimmed region
         const second_list = new Float32Array(parseInt(second_list_mem_alloc));
 
-        // create an array to combine the 2 parts
         const combined = new Float32Array(original_buffer.length);
 
-        // 2 channels: 1-right, 0-left
-        // copy the buffer values for the 2 regions from the original buffer
-
-        // for the region to the left of the trimmed section
         original_buffer.copyFromChannel(new_list, 1);
         original_buffer.copyFromChannel(new_list, 0);
 
-        // for the region to the right of the trimmed section
         original_buffer.copyFromChannel(second_list, 1, second_list_index);
         original_buffer.copyFromChannel(second_list, 0, second_list_index);
 
-        // create the combined buffer for the trimmed audio
         combined.set(new_list);
         combined.set(second_list, first_list_index);
 
-        // copy the combined array to the new_buffer
         new_buffer.copyToChannel(combined, 1);
         new_buffer.copyToChannel(combined, 0);
 
-        // load the new_buffer, to restart the wavesurfer's waveform display
         wavesurferObj.loadDecodedBuffer(new_buffer);
         console.log(
           "Trimmed audio loaded successfully new buffer: ",
@@ -188,62 +139,6 @@ const AudioWaveform = () => {
       }
     }
   };
-
-  //   Handle Download Logic
-
-  const handleDownload = async () => {
-    console.log("Download clicked", wavesurferObj.regions.list);
-    const res = await axios.post("/api/trim-audio", {
-      fileURL,
-      start: wavesurferObj.regions.list[0].start,
-      end: wavesurferObj.regions.list[0].end,
-    });
-
-    const blob = await res.blob();
-    saveAs(blob, "trimmed_audio.wav");
-  };
-
-  //   // Function to convert AudioBuffer to WAV Blob
-  //   const trimmedBufferToWave = async (buffer) => {
-  //     return new Promise((resolve, reject) => {
-  //       const length = buffer.length;
-  //       const sampleRate = buffer.sampleRate;
-  //       const numberOfChannels = buffer.numberOfChannels;
-  //       const interleaved = new Float32Array(length * numberOfChannels);
-  //       for (let i = 0; i < length; i++) {
-  //         for (let channel = 0; channel < numberOfChannels; channel++) {
-  //           interleaved[i * numberOfChannels + channel] =
-  //             buffer.getChannelData(channel)[i];
-  //         }
-  //       }
-  //       const bufferArray = new ArrayBuffer(44 + interleaved.length * 2);
-  //       const view = new DataView(bufferArray);
-  //       const blob = encodeWAV(interleaved, numberOfChannels, sampleRate);
-  //       const url = URL.createObjectURL(blob); // Create object URL for the Blob
-  //       resolve(url);
-  //     });
-  //   };
-
-  //   // Function to encode WAV data
-  //   const encodeWAV = (samples, numChannels, sampleRate) => {
-  //     const buffer = new ArrayBuffer(44 + samples.length * 2);
-  //     const view = new DataView(buffer);
-
-  //     // Set WAV header (omitted for brevity)
-
-  //     const dataView = new DataView(buffer, 0);
-  //     // Write WAV data...
-  //     for (let i = 0; i < samples.length; i++) {
-  //       const sample = Math.max(-1, Math.min(1, samples[i]));
-  //       dataView.setInt16(
-  //         44 + i * 2,
-  //         sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-  //         true
-  //       );
-  //     }
-
-  //     return new Blob([view], { type: "audio/mpeg" });
-  //   };
 
   return (
     <section className="waveform-container">
@@ -259,41 +154,11 @@ const AudioWaveform = () => {
             {playing ? <p>pause</p> : <p>play</p>}
           </button>
           <button title="reload" className="controls" onClick={handleReload}>
-            <i className="material-icons">replay</i>
+            <p className="material-icons">replay</p>
           </button>
           <button className="trim" onClick={handleTrim}>
             Trim
           </button>
-        </div>
-        <div className="right-container">
-          {/* <div className="volume-slide-container">
-            <i className="material-icons zoom-icon">remove_circle</i>
-            <input
-              type="range"
-              min="1"
-              max="1000"
-              value={zoom}
-              onChange={handleZoomSlider}
-              class="slider zoom-slider"
-            />
-            <i className="material-icons zoom-icon">add_circle</i>
-          </div> */}
-          {/* <div className="volume-slide-container">
-            {volume > 0 ? (
-              <i className="material-icons">volume_up</i>
-            ) : (
-              <i className="material-icons">volume_off</i>
-            )}
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={volume}
-              onChange={handleVolumeSlider}
-              className="slider volume-slider"
-            />
-          </div> */}
         </div>
       </div>
     </section>

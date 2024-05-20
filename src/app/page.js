@@ -1,11 +1,26 @@
+"use client";
+import { FileContext } from "@/context/fileContext";
+import { useContext } from "react";
+import AudioWaveform from "./components/AudioWaveform";
 import UploadAudio from "./components/UploadAudio";
 
-const page = () => {
+const Page = () => {
+  const { fileURL } = useContext(FileContext);
+  console.log(fileURL);
   return (
     <div>
-      <UploadAudio />
+      {fileURL ? (
+        <h1 style={{ textAlign: "center", margin: "1em 0" }}>
+          Edit Your Audio File
+        </h1>
+      ) : (
+        <h1 style={{ textAlign: "center", margin: "1em 0" }}>
+          Upload Your Audio File
+        </h1>
+      )}
+      {fileURL ? <AudioWaveform /> : <UploadAudio />}
     </div>
   );
 };
 
-export default page;
+export default Page;
